@@ -5,28 +5,53 @@
 //  Created by JIANGJINGZHE on 17/6/2026.
 //
 
+import AppKit
 import SwiftUI
-import SwiftData
+
+final class SSHocksAppDelegate: NSObject, NSApplicationDelegate {
+    var onTerminate: (() -> Void)?
+
+    func applicationWillTerminate(_ notification: Notification) {
+        onTerminate?()
+    }
+}
 
 @main
 struct SSHocksApp: App {
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Item.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+    @NSApplicationDelegateAdaptor(SSHocksAppDelegate.self) private var appDelegate
 
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
-        }
-    }()
+    @StateObject private var tunnelManager = SSHTunnelManager()
+    @StateObject private var systemProxyManager = SystemProxyManager()
+    @StateObject private var healthMonitor = ProxyHealthMonitor()
+    @StateObject private var tunModeManager = TUNModeManager()
 
     var body: some Scene {
-        WindowGroup {
-            ContentView()
+        WindowGroup("SSHocks", id: "main") {
+            ContentView(
+                tunnelManager: tunnelManager,
+                systemProxyManager: systemProxyManager,
+                healthMonitor: healthMonitor,
+                tunModeManager: tunModeManager
+            )
+            .onAppear {
+                appDelegate.onTerminate = {
+                    tunnelManager.shutdownForTermination()
+                    tunModeManager.shutdownForTermination()
+                }
+            }
         }
-        .modelContainer(sharedModelContainer)
+        .windowResizability(.contentSize)
+
+        MenuBarExtra {
+            SSHocksMenuBarView(
+                tunnelManager: tunnelManager,
+                statusSummary: tunnelManager.statusSummary,
+                systemProxyManager: systemProxyManager,
+                tunModeManager: tunModeManager
+            )
+        } label: {
+            SSHocksMenuBarLabel(statusSummary: tunnelManager.statusSummary)
+        }
+        .menuBarExtraStyle(.menu)
     }
 }
